@@ -59,6 +59,8 @@ CSV で `insert_grow`、`find_hit`、`find_miss` の ns/op を出力する。
 通常ビルドと分離した `.lake/build-profile` を使う。詳細は
 [プロファイリング手順](docs/hashi/profiling.md)を参照。
 
+測定結果は[比較ベンチマーク報告](docs/hashi/benchmark-report.md)にまとめている。
+
 ## SwissTable 調査
 
 - [概要と一次資料](docs/swisstable/README.md)
@@ -73,4 +75,5 @@ CSV で `insert_grow`、`find_hit`、`find_miss` の ns/op を出力する。
 - [レイアウトとホットパス](docs/hashi/lean-implementation.md)
 - [不足操作と C ネイティブ計画](docs/hashi/native-ops.md)
 - [ベンチマーク計画](docs/hashi/benchmarking.md)
+- [比較ベンチマーク報告](docs/hashi/benchmark-report.md)
 - [プロファイリング手順](docs/hashi/profiling.md)
