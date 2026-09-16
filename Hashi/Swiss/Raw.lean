@@ -37,20 +37,20 @@ def withBuckets [Inhabited α] [Inhabited β] (n : USize) : RawTable α β where
 
 private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
     (bits : UInt32) (key : α) : Option USize :=
-  let rec go (offset : Nat) : Option USize :=
-    if _h : offset < 8 then
-      let bit := (1 : UInt32) <<< UInt32.ofNat offset
-      if (bits &&& bit) != 0 then
-        let idx := (pos + USize.ofNat offset) &&& m.bucketMask
-        if hk : idx.toNat < m.keys.size then
-          if m.keys.uget idx hk == key then some idx else go (offset + 1)
-        else
-          go (offset + 1)
+  let rec go (fuel : Nat) (remaining : UInt32) : Option USize :=
+    match fuel with
+    | 0 => none
+    | fuel + 1 =>
+      if remaining == 0 then none
       else
-        go (offset + 1)
-    else
-      none
-  go 0
+        let offset := USize.ofNat (Group.ctz remaining).toNat
+        let idx := (pos + offset) &&& m.bucketMask
+        let remaining := remaining &&& (remaining - 1)
+        if hk : idx.toNat < m.keys.size then
+          if m.keys.uget idx hk == key then some idx else go fuel remaining
+        else
+          go fuel remaining
+  go 8 bits
 
 def findIndexWithHash? [BEq α] (m : @& RawTable α β) (key : α)
     (scrambled : UInt64) : Option USize :=
