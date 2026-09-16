@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#if defined(__SSE2__)
+#include <emmintrin.h>
+#endif
+
 #define HASHI_WIDTH 8
 #define HASHI_EMPTY UINT8_C(0xff)
 
@@ -24,6 +28,16 @@ LEAN_EXPORT uint32_t hashi_group_match_h2(
 LEAN_EXPORT uint32_t hashi_group_match_h2_and_empty(
     b_lean_obj_arg ctrl, size_t pos, uint8_t tag) {
     const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
+#if defined(__SSE2__)
+    const __m128i group = _mm_loadl_epi64((const __m128i *)(const void *)p);
+    const __m128i tags = _mm_set1_epi8((char)tag);
+    const __m128i empty = _mm_set1_epi8((char)HASHI_EMPTY);
+    const uint32_t matches =
+        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, tags)) & UINT32_C(0xff);
+    const uint32_t empties =
+        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, empty)) & UINT32_C(0xff);
+    return matches | (empties << HASHI_WIDTH);
+#else
     uint32_t matches = 0;
     uint32_t empties = 0;
     for (uint32_t i = 0; i < HASHI_WIDTH; ++i) {
@@ -31,6 +45,7 @@ LEAN_EXPORT uint32_t hashi_group_match_h2_and_empty(
         if (p[i] == HASHI_EMPTY) empties |= UINT32_C(1) << i;
     }
     return matches | (empties << HASHI_WIDTH);
+#endif
 }
 
 LEAN_EXPORT uint32_t hashi_group_match_empty(b_lean_obj_arg ctrl, size_t pos) {
