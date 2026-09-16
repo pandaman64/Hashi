@@ -83,8 +83,8 @@ private def findForInsertWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => firstVacant.map fun index => ⟨index, false⟩
       | fuel + 1 =>
         let group := Group.matchForInsert m.ctrl pos tag
-        let matches := group &&& 0xff
-        match matchingOffset? m pos matches key with
+        let candidates := group &&& 0xff
+        match matchingOffset? m pos candidates key with
         | some index => some ⟨index, true⟩
         | none =>
           let available := (group >>> 16) &&& 0xff
