@@ -111,3 +111,14 @@ ns/op の代わりにはしない。
 - `Array.ugetBorrowed` によるキー比較は小規模テストを通ったが、262,144
   要素ベンチで毎回 segmentation fault になった。この API は Lean が
   コンパイラ内部専用と明記しているため撤回し、安全な `Array.uget` を維持した
+
+## Group 走査統合後
+
+次に `hashi_group_match_h2` と `hashi_group_any_empty` が同じ制御バイトを
+別々に読む点を解消し、`hashi_group_match_h2_and_empty` 一回に統合した。
+通常ベンチの `find_miss` 中央値は 22.701 ns から 14.988 ns へ 34.0% 改善し、
+`Std.HashMap` の 16.761 ns を 10.6% 上回った。`find_hit` は実質横ばい。
+
+統合後の gprof では新しい Group 関数が self time の 36.4%で最大となった。
+制御走査の呼び出し重複はなくなったため、次の候補はこの関数の SIMD 化または
+Group 幅 16 化である。
