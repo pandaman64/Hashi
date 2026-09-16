@@ -21,6 +21,18 @@ LEAN_EXPORT uint32_t hashi_group_match_h2(
     return bits;
 }
 
+LEAN_EXPORT uint32_t hashi_group_match_h2_and_empty(
+    b_lean_obj_arg ctrl, size_t pos, uint8_t tag) {
+    const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
+    uint32_t matches = 0;
+    uint32_t empties = 0;
+    for (uint32_t i = 0; i < HASHI_WIDTH; ++i) {
+        if (p[i] == tag) matches |= UINT32_C(1) << i;
+        if (p[i] == HASHI_EMPTY) empties |= UINT32_C(1) << i;
+    }
+    return matches | (empties << HASHI_WIDTH);
+}
+
 LEAN_EXPORT uint32_t hashi_group_match_empty(b_lean_obj_arg ctrl, size_t pos) {
     const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
     uint32_t bits = 0;

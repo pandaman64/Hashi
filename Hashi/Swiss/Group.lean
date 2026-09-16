@@ -32,6 +32,9 @@ def matchEmpty (ctrl : @& ByteArray) (pos : USize) : UInt32 :=
 def matchEmptyOrDeleted (ctrl : @& ByteArray) (pos : USize) : UInt32 :=
   matchLoop ctrl pos fun c => !Ctrl.isFull c
 
+def matchH2AndEmpty (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt32 :=
+  matchH2 ctrl pos tag ||| (matchEmpty ctrl pos <<< 8)
+
 def anyEmpty (ctrl : @& ByteArray) (pos : USize) : Bool :=
   matchEmpty ctrl pos != 0
 
@@ -58,6 +61,14 @@ def matchEmpty (ctrl : @& ByteArray) (pos : USize) : UInt32 :=
 @[extern "hashi_group_match_empty_or_deleted", inline]
 def matchEmptyOrDeleted (ctrl : @& ByteArray) (pos : USize) : UInt32 :=
   Portable.matchEmptyOrDeleted ctrl pos
+
+/--
+Return H2 matches in bits 0–7 and EMPTY matches in bits 8–15.
+The native implementation computes both while loading the group only once.
+-/
+@[extern "hashi_group_match_h2_and_empty", inline]
+def matchH2AndEmpty (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt32 :=
+  Portable.matchH2AndEmpty ctrl pos tag
 
 @[extern "hashi_group_any_empty", inline]
 def anyEmpty (ctrl : @& ByteArray) (pos : USize) : Bool :=

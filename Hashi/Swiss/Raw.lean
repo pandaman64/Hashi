@@ -66,11 +66,12 @@ def findIndexWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       match fuel with
       | 0 => none
       | fuel + 1 =>
-        let bits := Group.matchH2 m.ctrl pos tag
+        let group := Group.matchH2AndEmpty m.ctrl pos tag
+        let bits := group &&& 0xff
         match matchingOffset? m pos bits key with
         | some idx => some idx
         | none =>
-          if Group.anyEmpty m.ctrl pos then none
+          if (group &&& 0xff00) != 0 then none
           else
             let stride := stride + Group.width
             probe fuel ((pos + stride) &&& m.bucketMask) stride
