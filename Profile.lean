@@ -49,7 +49,7 @@ private def usage : String :=
 def main (args : List String) : IO Unit := do
   let workload := args[0]?.getD "find-hit"
   let n := parseNat args[1]? 262144
-  let defaultRepetitions := if workload == "insert-grow" then 20 else 400
+  let defaultRepetitions := if workload == "insert-grow" then 50 else 400
   let repetitions := parseNat args[2]? defaultRepetitions
   let hitKeys := makeKeys n 0
   let sink ← match workload with

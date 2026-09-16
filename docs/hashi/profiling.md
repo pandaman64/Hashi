@@ -13,7 +13,7 @@ Linux で `gprof`（通常は `binutils` に含まれる）を用意し、リポ
 ```sh
 ./scripts/profile.sh find-hit
 ./scripts/profile.sh find-miss 262144 400
-./scripts/profile.sh insert-grow 262144 20
+./scripts/profile.sh insert-grow 262144 50
 ```
 
 引数は workload、要素数、反復数。結果は
@@ -62,3 +62,23 @@ perf report
 
 コンテナでは `perf_event_paranoid` や capability により拒否されることがある。
 その場合でも `gprof` 経路はカーネルの perf 権限を必要としない。
+
+## 初回ベースラインで見えた箇所
+
+Lean 4.34、262,144 要素での初回計測では、次が上位だった。割合は gprof の
+self-time サンプルであり、絶対性能や通常ビルドの ns/op としては扱わない。
+
+- `find-hit`: `RawTable.get?` 29.8%、`matchingOffset?` 26.9%、
+  `hashi_group_match_h2` 9.8%。`Option` の生成・破棄を含む lookup の Lean 側と
+  H2 候補処理が中心
+- `find-miss`: `matchingOffset?` 37.5%、`hashi_group_match_h2` 14.4%、
+  `hashi_group_any_empty` 12.0%
+- `insert-grow`: RC 解放系が約 45%、`writeNew` 15.0%、再ハッシュ走査 6.5%。
+  5,242,880 回の利用者 insert に対して `writeNew` は 14,417,840 回呼ばれ、
+  成長時の再挿入コストが明確
+
+最も具体的な検索側の問題は、`matchingOffset?` が H2 マスクがゼロでも 8
+オフセットを再帰走査する点である。まずゼロマスクを即時終了し、以後は
+`ctz` と `bits &&& (bits - 1)` で立っている候補だけを見るのが優先候補になる。
+挿入側は `reserve` 済みプロファイルを追加して再ハッシュと定常書き込みを分離し、
+その後に RC と配列更新を調べる。

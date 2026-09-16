@@ -10,7 +10,7 @@ case "$WORKLOAD" in
     REPETITIONS="${3:-400}"
     ;;
   insert-grow)
-    REPETITIONS="${3:-20}"
+    REPETITIONS="${3:-50}"
     ;;
   *)
     echo "usage: $0 [find-hit|find-miss|insert-grow] [elements] [repetitions]" >&2
