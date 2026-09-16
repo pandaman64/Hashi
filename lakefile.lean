@@ -6,9 +6,11 @@ package Hashi where
 
 lean_lib Hashi
 
+@[default_target]
 lean_exe hashi where
   root := `Main
 
+@[default_target]
 lean_exe hashi_tests where
   root := `Tests
 

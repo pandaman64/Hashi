@@ -14,7 +14,7 @@ Lean 4 向けの SwissTable 風ハッシュマップ実装。
 import Hashi
 
 def capitals : Hashi.HashMap String String :=
-  {} |>.insert "France" "Paris" |>.insert "Japan" "Tokyo"
+  Hashi.HashMap.empty |>.insert "France" "Paris" |>.insert "Japan" "Tokyo"
 
 #eval capitals.get? "Japan" -- some "Tokyo"
 ```
