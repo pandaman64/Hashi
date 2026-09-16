@@ -122,3 +122,13 @@ ns/op の代わりにはしない。
 統合後の gprof では新しい Group 関数が self time の 36.4%で最大となった。
 制御走査の呼び出し重複はなくなったため、次の候補はこの関数の SIMD 化または
 Group 幅 16 化である。
+
+## SSE2 化後
+
+統合Group関数をx86_64でSSE2化した。通常ベンチの `find_miss` は
+14.988 nsから11.563 nsへ22.9%改善し、`Std.HashMap` より32.4%高速になった。
+`find_hit` も4.4%改善した。gprof のGroup self timeは0.52秒から0.21秒へ
+59.6%減少した。
+
+この結果、次は `matchingOffset?`、`findIndexWithHash?` の探査制御、および
+`RawTable.get?` の値返却コストが主な調査対象になる。

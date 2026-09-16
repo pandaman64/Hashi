@@ -2,7 +2,7 @@
 
 ## 条件
 
-- 実施日: 2026-09-16、コード: `168cde9`
+- 実施日: 2026-09-16、コード: `7fae644`
 - CPU: Intel Xeon、4 vCPU、x86_64
 - Lean 4.34.0、Clang 18.1.3、release ビルド、C Group 幅 8
 - `UInt64 → UInt64`、262,144 要素、lookup 100 反復
@@ -21,11 +21,11 @@ lake build hashi_bench
 
 | workload | Hashi | `Std.HashMap` | Hashi / Std |
 | --- | ---: | ---: | ---: |
-| `insert_grow` | 235.882 | 141.534 | 1.667× |
-| `find_hit` | 39.896 | 27.995 | 1.425× |
-| `find_miss` | **14.988** | 16.761 | **0.894×** |
+| `insert_grow` | 249.544 | 145.415 | 1.716× |
+| `find_hit` | 38.151 | 28.580 | 1.335× |
+| `find_miss` | **11.563** | 17.103 | **0.676×** |
 
-Hashi の `find_miss` は `Std.HashMap` より 10.6% 高速になった。insert と
+Hashi の `find_miss` は `Std.HashMap` より 32.4% 高速になった。insert と
 hit は引き続き Std が速い。
 
 ## H2 ゼロマスク高速化
@@ -58,10 +58,26 @@ gprof では miss 時の候補走査再帰が 109,333,979 回から 3,443,481 �
 hit の 1.0% 差は実行間のばらつきの範囲。最初の実装から通算すると
 `find_miss` は 30.556 ns から 14.988 ns へ 50.9% 改善した。
 
+## SSE2 Group 比較
+
+統合Group関数の自動ベクトル化は8回の個別ロードと多数のunpack命令を生成して
+いた。x86_64 では64-bitロード、`pcmpeqb`、`pmovmskb`を使うSSE2実装へ変更し、
+他アーキテクチャにはポータブル実装を残した。
+
+| workload | SSE2 前 | SSE2 後 | 変化 |
+| --- | ---: | ---: | ---: |
+| `insert_grow` | 235.882 | 249.544 | +5.8% |
+| `find_hit` | 39.896 | 38.151 | -4.4% |
+| `find_miss` | 14.988 | **11.563** | **-22.9%** |
+
+insert は実行間のばらつきが大きく、改善は確認できない。gprof では統合Group関数の
+self time が 0.52秒から0.21秒へ59.6%減り、計装全体も1.43秒から1.05秒へ減った。
+最初の実装から通算した `find_miss` の改善は62.2%。
+
 ## 解釈と次の候補
 
-- miss の次の上位コストは統合後の `hashi_group_match_h2_and_empty` と
-  `findIndexWithHash?`。次は SIMD 化または Group 幅 16 の検討対象
+- miss の次の上位コストは候補処理、探査ループ、値取得。Group 幅 16 化も
+  引き続き検討対象
 - hit は `RawTable.get?` と候補キー取得が中心
 - insert は RC 解放と再ハッシュが支配的。`reserve` 済み測定との分離が必要
 
