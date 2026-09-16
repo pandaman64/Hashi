@@ -48,6 +48,17 @@ lake build hashi_bench
 CSV で `insert_grow`、`find_hit`、`find_miss` の ns/op を出力する。
 コンパイル済み実行ファイルを使い、インタプリタの値は計測しない。
 
+ボトルネックを関数単位で調べる gprof 計装ビルド:
+
+```sh
+./scripts/profile.sh find-hit
+./scripts/profile.sh find-miss
+./scripts/profile.sh insert-grow
+```
+
+通常ビルドと分離した `.lake/build-profile` を使う。詳細は
+[プロファイリング手順](docs/hashi/profiling.md)を参照。
+
 ## SwissTable 調査
 
 - [概要と一次資料](docs/swisstable/README.md)
@@ -62,3 +73,4 @@ CSV で `insert_grow`、`find_hit`、`find_miss` の ns/op を出力する。
 - [レイアウトとホットパス](docs/hashi/lean-implementation.md)
 - [不足操作と C ネイティブ計画](docs/hashi/native-ops.md)
 - [ベンチマーク計画](docs/hashi/benchmarking.md)
+- [プロファイリング手順](docs/hashi/profiling.md)
