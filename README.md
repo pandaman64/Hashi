@@ -1,10 +1,8 @@
 # Hashi
 
-Lean 4 のライブラリ雛形。SwissTable ハッシュテーブルの調査資料を `docs/swisstable/` に置いている。
+Lean 4 のライブラリ雛形。SwissTable の調査と、Lean 4 実装の設計資料を `docs/` に置いている。
 
-## SwissTable ドキュメント
-
-Google SwissTable の設計と、Abseil / hashbrown 両実装の調査。
+## SwissTable 調査
 
 - [概要と一次資料](docs/swisstable/README.md)
 - [設計（共通アルゴリズム）](docs/swisstable/design.md)
@@ -12,4 +10,10 @@ Google SwissTable の設計と、Abseil / hashbrown 両実装の調査。
 - [hashbrown `RawTable` 実装](docs/swisstable/hashbrown.md)
 - [実装差の対照](docs/swisstable/comparison.md)
 
-調査リビジョンは各文書の冒頭に記す。
+## Lean 4 実装設計
+
+コードはまだない。設計のみ。
+
+- [概要](docs/hashi/README.md)
+- [レイアウトとホットパス](docs/hashi/lean-implementation.md)
+- [不足操作と C ネイティブ計画](docs/hashi/native-ops.md)
