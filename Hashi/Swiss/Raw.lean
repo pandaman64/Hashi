@@ -55,6 +55,50 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
         none
     go 0
 
+private structure InsertSearch where
+  index : USize
+  found : Bool
+
+private def firstIndexInMask (m : @& RawTable α β) (pos : USize)
+    (bits : UInt32) : Option USize :=
+  if bits == 0 then none
+  else
+    let offset := USize.ofNat (Group.ctz bits).toNat
+    some ((pos + offset) &&& m.bucketMask)
+
+/--
+Search for an existing key while remembering the first EMPTY/DELETED slot.
+This is the hashbrown-style single-pass insertion probe.
+-/
+private def findForInsertWithHash? [BEq α] (m : @& RawTable α β) (key : α)
+    (scrambled : UInt64) : Option InsertSearch :=
+  let n := m.buckets
+  if n == 0 then none
+  else
+    let groups := if n < Group.width then 1 else n.toNat / Group.width.toNat
+    let tag := Ctrl.h2 scrambled
+    let rec probe (fuel : Nat) (pos stride : USize)
+        (firstVacant : Option USize) : Option InsertSearch :=
+      match fuel with
+      | 0 => firstVacant.map fun index => ⟨index, false⟩
+      | fuel + 1 =>
+        let group := Group.matchForInsert m.ctrl pos tag
+        let matches := group &&& 0xff
+        match matchingOffset? m pos matches key with
+        | some index => some ⟨index, true⟩
+        | none =>
+          let available := (group >>> 16) &&& 0xff
+          let firstVacant :=
+            match firstVacant with
+            | some index => some index
+            | none => firstIndexInMask m pos available
+          if (group &&& 0xff00) != 0 then
+            firstVacant.map fun index => ⟨index, false⟩
+          else
+            let stride := stride + Group.width
+            probe fuel ((pos + stride) &&& m.bucketMask) stride firstVacant
+    probe groups (Ctrl.h1 scrambled m.bucketMask) 0 none
+
 def findIndexWithHash? [BEq α] (m : @& RawTable α β) (key : α)
     (scrambled : UInt64) : Option USize :=
   let n := m.buckets
@@ -149,11 +193,20 @@ private def prepareInsert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
 def insert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
     (m : RawTable α β) (key : α) (value : β) : RawTable α β :=
   let scrambled := Ctrl.scrambleHash (hash key)
-  match findIndexWithHash? m key scrambled with
-  | some idx =>
-    let vals :=
-      if h : idx.toNat < m.vals.size then m.vals.uset idx value h else m.vals
-    { m with vals := vals }
+  match findForInsertWithHash? m key scrambled with
+  | some result =>
+    if result.found then
+      let vals :=
+        if h : result.index.toNat < m.vals.size then
+          m.vals.uset result.index value h
+        else
+          m.vals
+      { m with vals := vals }
+    else if m.growthLeft == 0 then
+      let m := prepareInsert m
+      insertNewWithHash m key value scrambled
+    else
+      writeNew m result.index (Ctrl.h2 scrambled) key value
   | none =>
     let m := prepareInsert m
     insertNewWithHash m key value scrambled

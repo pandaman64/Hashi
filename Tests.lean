@@ -12,6 +12,8 @@ private def testGroups : IO Unit := do
   ensure (Swiss.Group.matchEmpty ctrl 0 == 0x22) "matchEmpty mask is incorrect"
   ensure (Swiss.Group.matchH2AndEmpty ctrl 0 0x12 == 0x2289)
     "combined H2/EMPTY mask is incorrect"
+  ensure (Swiss.Group.matchForInsert ctrl 0 0x12 == 0x262289)
+    "insert mask is incorrect"
   ensure (Swiss.Group.matchEmptyOrDeleted ctrl 0 == 0x26)
     "matchEmptyOrDeleted mask is incorrect"
   ensure (Swiss.Group.ctz 0x80 == 7 && Swiss.Group.ctz 0 == 32) "ctz is incorrect"
@@ -39,6 +41,9 @@ private def testNativeParity : IO Unit := do
       ensure (Swiss.Group.matchH2AndEmpty ctrl p t ==
         Swiss.Group.Portable.matchH2AndEmpty ctrl p t)
         s!"native combined mask mismatch at {pos}, tag {tag}"
+      ensure (Swiss.Group.matchForInsert ctrl p t ==
+        Swiss.Group.Portable.matchForInsert ctrl p t)
+        s!"native insert mask mismatch at {pos}, tag {tag}"
   for bits in [:256] do
     let b := UInt32.ofNat bits
     ensure (Swiss.Group.ctz b == Swiss.Group.Portable.ctz b)
