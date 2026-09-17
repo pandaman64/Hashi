@@ -55,27 +55,23 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
         none
     go 0
 
-private def matchingValueFrom? [BEq α] (m : @& RawTable α β) (pos : USize)
-    (bits : UInt32) (key : α) (firstOffset : Nat) : Option β :=
+private def matchingValueMask? [BEq α] (m : @& RawTable α β) (pos : USize)
+    (bits : UInt32) (key : α) : Option β :=
   if bits == 0 then none
   else
-    let rec go (offset : Nat) : Option β :=
-      if _h : offset < Group.width.toNat then
-        let bit := (1 : UInt32) <<< UInt32.ofNat offset
-        if (bits &&& bit) != 0 then
-          let idx := (pos + USize.ofNat offset) &&& m.bucketMask
-          if hk : idx.toNat < m.keys.size then
-            if m.keys.uget idx hk == key then
-              if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
-            else
-              go (offset + 1)
-          else
-            go (offset + 1)
-        else
-          go (offset + 1)
+    let rec go (remaining : UInt32) : Option β :=
+      if remaining == 0 then none
       else
-        none
-    go firstOffset
+        let offset := Group.ctz remaining
+        let idx := (pos + USize.ofNat offset.toNat) &&& m.bucketMask
+        if hk : idx.toNat < m.keys.size then
+          if m.keys.uget idx hk == key then
+            if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
+          else
+            go (remaining &&& (remaining - 1))
+        else
+          go (remaining &&& (remaining - 1))
+    go bits
 
 private structure InsertSearch where
   index : USize
@@ -193,7 +189,7 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
           match nextValue with
           | some value => some value
           | none =>
-            match matchingValueFrom? m pos (remaining &&& 0xfffc) key 2 with
+            match matchingValueMask? m pos (remaining &&& 0xfffc) key with
             | some value => some value
             | none =>
               if (group &&& 0xffff0000) != 0 then none
