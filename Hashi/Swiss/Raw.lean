@@ -58,13 +58,20 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
 private structure InsertSearch where
   index : USize
   found : Bool
+  wasEmpty : Bool
 
-private def firstIndexInMask (m : @& RawTable α β) (pos : USize)
-    (bits : UInt32) : Option USize :=
-  if bits == 0 then none
+private structure VacantSlot where
+  index : USize
+  wasEmpty : Bool
+
+private def firstVacantInMasks (m : @& RawTable α β) (pos : USize)
+    (available empties : UInt32) : Option VacantSlot :=
+  if available == 0 then none
   else
-    let offset := USize.ofNat (Group.ctz bits).toNat
-    some ((pos + offset) &&& m.bucketMask)
+    let offsetNat := (Group.ctz available).toNat
+    let offset := USize.ofNat offsetNat
+    let bit := (1 : UInt32) <<< UInt32.ofNat offsetNat
+    some ⟨(pos + offset) &&& m.bucketMask, (empties &&& bit) != 0⟩
 
 /--
 Search for an existing key while remembering the first EMPTY/DELETED slot.
@@ -78,22 +85,23 @@ private def findForInsertWithHash? [BEq α] (m : @& RawTable α β) (key : α)
     let groups := if n < Group.width then 1 else n.toNat / Group.width.toNat
     let tag := Ctrl.h2 scrambled
     let rec probe (fuel : Nat) (pos stride : USize)
-        (firstVacant : Option USize) : Option InsertSearch :=
+        (firstVacant : Option VacantSlot) : Option InsertSearch :=
       match fuel with
-      | 0 => firstVacant.map fun index => ⟨index, false⟩
+      | 0 => firstVacant.map fun vacant => ⟨vacant.index, false, vacant.wasEmpty⟩
       | fuel + 1 =>
         let group := Group.matchForInsert m.ctrl pos tag
         let candidates := group &&& 0xff
         match matchingOffset? m pos candidates key with
-        | some index => some ⟨index, true⟩
+        | some index => some ⟨index, true, false⟩
         | none =>
           let available := (group >>> 16) &&& 0xff
+          let empties := (group >>> 8) &&& 0xff
           let firstVacant :=
             match firstVacant with
-            | some index => some index
-            | none => firstIndexInMask m pos available
+            | some vacant => some vacant
+            | none => firstVacantInMasks m pos available empties
           if (group &&& 0xff00) != 0 then
-            firstVacant.map fun index => ⟨index, false⟩
+            firstVacant.map fun vacant => ⟨vacant.index, false, vacant.wasEmpty⟩
           else
             let stride := stride + Group.width
             probe fuel ((pos + stride) &&& m.bucketMask) stride firstVacant
@@ -145,9 +153,7 @@ private def findAvailableWithHash? (m : @& RawTable α β)
     probe groups (Ctrl.h1 scrambled m.bucketMask) 0
 
 private def writeNew (m : RawTable α β) (idx : USize) (tag : UInt8)
-    (key : α) (value : β) : RawTable α β :=
-  let previous :=
-    if h : idx.toNat < m.ctrl.size then m.ctrl.uget idx h else Ctrl.deleted
+    (key : α) (value : β) (wasEmpty : Bool) : RawTable α β :=
   let keys :=
     if h : idx.toNat < m.keys.size then m.keys.uset idx key h else m.keys
   let vals :=
@@ -158,12 +164,12 @@ private def writeNew (m : RawTable α β) (idx : USize) (tag : UInt8)
     keys := keys
     vals := vals
     size := m.size + 1
-    growthLeft := if previous == Ctrl.empty then m.growthLeft - 1 else m.growthLeft }
+    growthLeft := if wasEmpty then m.growthLeft - 1 else m.growthLeft }
 
 private def insertNewWithHash (m : RawTable α β) (key : α) (value : β)
     (scrambled : UInt64) : RawTable α β :=
   match findAvailableWithHash? m scrambled with
-  | some idx => writeNew m idx (Ctrl.h2 scrambled) key value
+  | some idx => writeNew m idx (Ctrl.h2 scrambled) key value true
   | none => m
 
 def rehash [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
@@ -206,7 +212,7 @@ def insert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
       let m := prepareInsert m
       insertNewWithHash m key value scrambled
     else
-      writeNew m result.index (Ctrl.h2 scrambled) key value
+      writeNew m result.index (Ctrl.h2 scrambled) key value result.wasEmpty
   | none =>
     let m := prepareInsert m
     insertNewWithHash m key value scrambled
