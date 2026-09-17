@@ -15,11 +15,15 @@ Linux で `gprof`（通常は `binutils` に含まれる）を用意し、リポ
 ./scripts/profile.sh find-miss 262144 400
 ./scripts/profile.sh insert-grow 262144 50
 ./scripts/profile.sh insert-reserved 262144 50
+./scripts/profile.sh find-hit 262144 400 std
+./scripts/profile.sh insert-grow 262144 50 std
 ```
 
-引数は workload、要素数、反復数。結果は
+引数は workload、要素数、反復数、実装（`hashi`または`std`、省略時は
+`hashi`）。結果は
 `.lake/profiles/<workload>/report.txt` に保存され、端末には flat profile の
-先頭を表示する。サンプルが少ない場合は反復数を増やす。`gprof` の時間サンプル
+先頭を表示する。Stdの結果は`.lake/profiles/std-<workload>/report.txt`。
+サンプルが少ない場合は反復数を増やす。`gprof` の時間サンプル
 は通常 0.01 秒単位なので、少なくとも数秒実行する。
 
 手動実行もできる。
@@ -156,3 +160,34 @@ insertの既存キー探査と空き探査を統合した。通常ベンチの `
 減った。この差は高速化ではなく、完成したキー・値配列の破棄コストである。
 growがreservedの1.96倍であることから、挿入中の次の大きな差は再ハッシュと確保。
 定常挿入自体の次の対象は`writeNew`である。
+
+## Std.HashMapとの比較
+
+同じキー列とサンプリング境界で両実装を計測した。gprof計装は関数境界の数によって
+影響が変わるため、次の秒数はボトルネックの帰属に使い、通常性能の比には使わない。
+性能比は比較ベンチのns/opを正とする。
+
+| workload | Hashi sampled | Std sampled | 通常ベンチ Hashi / Std |
+| --- | ---: | ---: | ---: |
+| `insert-grow`（262,144×50） | 1.20 s | 0.53 s | 2.010× |
+| `insert-reserved`（1,048,576×20） | 1.15 s | 0.44 s | 2.042× |
+| `find-hit`（262,144×400） | 2.87 s | 2.68 s | 1.316× |
+| `find-miss`（262,144×400） | 0.89 s | 2.02 s | 0.674× |
+
+Hashiが遅い箇所は次のとおり。
+
+- reserved insertでは`writeNew`だけで0.65秒（56.5%）。Stdのinsert全体は
+  0.37秒（84.1%）だった。Hashiは各要素でkey配列、value配列、control byteの
+  3個を別々に更新し、テーブルrecordとsize/growthLeftも作り直す
+- growではHashiの`writeNew` 0.22秒に加え、再ハッシュ走査0.18秒、
+  旧配列の再帰解放0.15秒、再挿入用の空き探索0.12秒がかかる。Stdはinsert
+  0.23秒と、bucket chainを移す`AssocList.foldlM` 0.23秒にほぼ集約される
+- hitではHashiの`RawTable.get?` 0.83秒、H2候補キー確認0.71秒、probe 0.23秒、
+  Group比較0.20秒が分散して発生する。key確認後に別のvalue配列を読む二段階経路と、
+  中間`Option USize`を含むallocation/freeがStdより多い
+- missはHashiの方が速い。H2で候補を落とすため、104,857,600検索に対して実キー
+  比較は3,428,800回だけ。Stdは全missでbucket chainのgetを実行する
+
+したがって、挿入の第一候補は`writeNew`の3配列更新とrecord再構築の削減、
+grow固有では再ハッシュ専用の直接配置経路である。hitの第一候補はindexの
+`Option`を経由せず、候補一致時にvalueを直接返すlookup経路である。
