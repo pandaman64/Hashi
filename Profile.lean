@@ -160,6 +160,6 @@ def main (args : List String) : IO Unit := do
       profileStdInsertRepeated hitKeys repetitions false
     | "std", "insert-reserved" =>
       profileStdInsertRepeated hitKeys repetitions true
-    | _ => throw (IO.userError usage)
-  IO.eprintln s!"implementation={implementation} workload={workload} elements={n} " ++
-    s!"repetitions={repetitions} sink={sink}"
+    | _, _ => throw (IO.userError usage)
+  IO.eprintln (s!"implementation={implementation} workload={workload} elements={n} " ++
+    s!"repetitions={repetitions} sink={sink}")
