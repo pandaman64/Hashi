@@ -2,7 +2,7 @@
 
 ## 条件
 
-- 実施日: 2026-09-17、コード: `584a171`
+- 実施日: 2026-09-17、コード: `1453e78`
 - CPU: Intel Xeon、4 vCPU、x86_64
 - Lean 4.34.0、Clang 18.1.3、release ビルド、C Group 幅 8
 - `UInt64 → UInt64`、262,144 要素、lookup 100 反復
@@ -128,6 +128,12 @@ lookupはindexを`Option USize`で返してからvalue配列を再度読む経�
 
 probeからEMPTY情報を`writeNew`へ運びcontrol byte再読込を省く案も測定したが、
 reserved profileは1.15秒から1.13秒の改善に留まり、growが悪化したため撤回した。
+
+key/valueの二配列を`Array (α × β)`へ統合する案も試した。`writeNew`単体は
+0.65秒から0.54秒へ17%短縮したが、pair objectの割当と間接参照が増え、
+reserved profile全体は1.15秒から1.21秒へ悪化した。通常ベンチ中央値も
+growが118.714 nsから179.291 ns、hitが31.060 nsから45.689 nsへ悪化した。
+再ハッシュの各移動でもpairを再確保するため、この配置は撤回した。
 
 ## 解釈と次の候補
 
