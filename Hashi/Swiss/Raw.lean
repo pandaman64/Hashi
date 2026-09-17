@@ -55,6 +55,28 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
         none
     go 0
 
+private def matchingValue? [BEq α] (m : @& RawTable α β) (pos : USize)
+    (bits : UInt32) (key : α) : Option β :=
+  if bits == 0 then none
+  else
+    let rec go (offset : Nat) : Option β :=
+      if _h : offset < 8 then
+        let bit := (1 : UInt32) <<< UInt32.ofNat offset
+        if (bits &&& bit) != 0 then
+          let idx := (pos + USize.ofNat offset) &&& m.bucketMask
+          if hk : idx.toNat < m.keys.size then
+            if m.keys.uget idx hk == key then
+              if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
+            else
+              go (offset + 1)
+          else
+            go (offset + 1)
+        else
+          go (offset + 1)
+      else
+        none
+    go 0
+
 private structure InsertSearch where
   index : USize
   found : Bool
@@ -124,6 +146,28 @@ def findIndexWithHash? [BEq α] (m : @& RawTable α β) (key : α)
 @[inline] def findIndex? [BEq α] [Hashable α] (m : @& RawTable α β)
     (key : α) : Option USize :=
   findIndexWithHash? m key (Ctrl.scrambleHash (hash key))
+
+private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
+    (scrambled : UInt64) : Option β :=
+  let n := m.buckets
+  if n == 0 then none
+  else
+    let groups := if n < Group.width then 1 else n.toNat / Group.width.toNat
+    let tag := Ctrl.h2 scrambled
+    let rec probe (fuel : Nat) (pos stride : USize) : Option β :=
+      match fuel with
+      | 0 => none
+      | fuel + 1 =>
+        let group := Group.matchH2AndEmpty m.ctrl pos tag
+        let bits := group &&& 0xff
+        match matchingValue? m pos bits key with
+        | some value => some value
+        | none =>
+          if (group &&& 0xff00) != 0 then none
+          else
+            let stride := stride + Group.width
+            probe fuel ((pos + stride) &&& m.bucketMask) stride
+    probe groups (Ctrl.h1 scrambled m.bucketMask) 0
 
 private def findAvailableWithHash? (m : @& RawTable α β)
     (scrambled : UInt64) : Option USize :=
@@ -248,10 +292,7 @@ def insert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
     insertNewWithHash m key value scrambled
 
 def get? [BEq α] [Hashable α] (m : @& RawTable α β) (key : α) : Option β :=
-  match findIndex? m key with
-  | none => none
-  | some idx =>
-    if h : idx.toNat < m.vals.size then some (m.vals.uget idx h) else none
+  getWithHash? m key (Ctrl.scrambleHash (hash key))
 
 @[inline] def contains [BEq α] [Hashable α] (m : @& RawTable α β) (key : α) : Bool :=
   (findIndex? m key).isSome
