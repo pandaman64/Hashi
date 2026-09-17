@@ -7,8 +7,21 @@
 #include <emmintrin.h>
 #endif
 
+#if defined(HASHI_GPROF)
+#include <sys/gmon.h>
+#endif
+
 #define HASHI_WIDTH 8
 #define HASHI_EMPTY UINT8_C(0xff)
+
+LEAN_EXPORT lean_obj_res hashi_profile_control(uint8_t enabled) {
+#if defined(HASHI_GPROF)
+    moncontrol(enabled != 0);
+#else
+    (void)enabled;
+#endif
+    return lean_io_result_mk_ok(lean_box(0));
+}
 
 static inline const uint8_t *hashi_ctrl_ptr(b_lean_obj_arg ctrl, size_t pos) {
     assert(pos + HASHI_WIDTH <= lean_sarray_size(ctrl));

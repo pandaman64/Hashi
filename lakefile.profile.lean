@@ -20,7 +20,7 @@ target hashiGroupO pkg : System.FilePath := do
   let objectFile := pkg.buildDir / "c" / "hashi_group.o"
   let source ← inputTextFile (pkg.dir / "c" / "hashi_group.c")
   buildO objectFile source #["-I", (← getLeanIncludeDir).toString]
-    #["-fPIC", "-O3", "-pg"]
+    #["-fPIC", "-O3", "-pg", "-DHASHI_GPROF"]
 
 extern_lib hashi_group pkg := do
   let objectFile ← hashiGroupO.fetch

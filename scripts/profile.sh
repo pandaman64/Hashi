@@ -9,11 +9,11 @@ case "$WORKLOAD" in
   find-hit|find-miss)
     REPETITIONS="${3:-400}"
     ;;
-  insert-grow)
+  insert-grow|insert-reserved)
     REPETITIONS="${3:-50}"
     ;;
   *)
-    echo "usage: $0 [find-hit|find-miss|insert-grow] [elements] [repetitions]" >&2
+    echo "usage: $0 [find-hit|find-miss|insert-grow|insert-reserved] [elements] [repetitions]" >&2
     exit 2
     ;;
 esac
