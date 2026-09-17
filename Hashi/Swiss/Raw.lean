@@ -8,7 +8,8 @@ and values so unsuccessful lookups do not touch the values array.
 -/
 structure RawTable (α β : Type) where
   ctrl : ByteArray
-  slots : Array (α × β)
+  keys : Array α
+  vals : Array β
   bucketMask : USize
   size : USize
   growthLeft : USize
@@ -17,7 +18,8 @@ namespace RawTable
 
 def empty : RawTable α β where
   ctrl := {}
-  slots := #[]
+  keys := #[]
+  vals := #[]
   bucketMask := 0
   size := 0
   growthLeft := 0
@@ -27,7 +29,8 @@ def empty : RawTable α β where
 
 def withBuckets [Inhabited α] [Inhabited β] (n : USize) : RawTable α β where
   ctrl := Ctrl.alloc n
-  slots := Array.replicate n.toNat (default, default)
+  keys := Array.replicate n.toNat default
+  vals := Array.replicate n.toNat default
   bucketMask := n - 1
   size := 0
   growthLeft := Ctrl.maxLoad n
@@ -42,8 +45,8 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
         let bit := (1 : UInt32) <<< UInt32.ofNat offset
         if (bits &&& bit) != 0 then
           let idx := (pos + USize.ofNat offset) &&& m.bucketMask
-          if hs : idx.toNat < m.slots.size then
-            if (m.slots.uget idx hs).1 == key then some idx else go (offset + 1)
+          if hk : idx.toNat < m.keys.size then
+            if m.keys.uget idx hk == key then some idx else go (offset + 1)
           else
             go (offset + 1)
         else
@@ -61,10 +64,9 @@ private def matchingValue? [BEq α] (m : @& RawTable α β) (pos : USize)
         let bit := (1 : UInt32) <<< UInt32.ofNat offset
         if (bits &&& bit) != 0 then
           let idx := (pos + USize.ofNat offset) &&& m.bucketMask
-          if hs : idx.toNat < m.slots.size then
-            let slot := m.slots.uget idx hs
-            if slot.1 == key then
-              some slot.2
+          if hk : idx.toNat < m.keys.size then
+            if m.keys.uget idx hk == key then
+              if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
             else
               go (offset + 1)
           else
@@ -190,23 +192,29 @@ private def writeNew (m : RawTable α β) (idx : USize) (tag : UInt8)
     (key : α) (value : β) : RawTable α β :=
   let previous :=
     if h : idx.toNat < m.ctrl.size then m.ctrl.uget idx h else Ctrl.deleted
-  let slots :=
-    if h : idx.toNat < m.slots.size then m.slots.uset idx (key, value) h else m.slots
+  let keys :=
+    if h : idx.toNat < m.keys.size then m.keys.uset idx key h else m.keys
+  let vals :=
+    if h : idx.toNat < m.vals.size then m.vals.uset idx value h else m.vals
   let n := m.buckets
   { m with
     ctrl := Ctrl.setWithClone m.ctrl n idx tag
-    slots := slots
+    keys := keys
+    vals := vals
     size := m.size + 1
     growthLeft := if previous == Ctrl.empty then m.growthLeft - 1 else m.growthLeft }
 
 private def writeRehashed (m : RawTable α β) (idx : USize) (tag : UInt8)
     (key : α) (value : β) : RawTable α β :=
-  let slots :=
-    if h : idx.toNat < m.slots.size then m.slots.uset idx (key, value) h else m.slots
+  let keys :=
+    if h : idx.toNat < m.keys.size then m.keys.uset idx key h else m.keys
+  let vals :=
+    if h : idx.toNat < m.vals.size then m.vals.uset idx value h else m.vals
   let n := m.buckets
   { m with
     ctrl := Ctrl.setWithClone m.ctrl n idx tag
-    slots := slots
+    keys := keys
+    vals := vals
     size := m.size + 1
     growthLeft := m.growthLeft - 1 }
 
@@ -244,10 +252,12 @@ def rehash [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
     let control := old.ctrl.get! i
     if Ctrl.isFull control then
       let idx := USize.ofNat i
-      if hs : idx.toNat < old.slots.size then
-        let slot := old.slots.uget idx hs
-        let scrambled := Ctrl.scrambleHash (hash slot.1)
-        result := insertRehashedWithHash result slot.1 slot.2 scrambled control
+      if hk : idx.toNat < old.keys.size then
+        if hv : idx.toNat < old.vals.size then
+          let key := old.keys.uget idx hk
+          let value := old.vals.uget idx hv
+          let scrambled := Ctrl.scrambleHash (hash key)
+          result := insertRehashedWithHash result key value scrambled control
   return result
 
 private def prepareInsert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
@@ -266,13 +276,12 @@ def insert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
   match findForInsertWithHash? m key scrambled with
   | some result =>
     if result.found then
-      let slots :=
-        if h : result.index.toNat < m.slots.size then
-          let slot := m.slots.uget result.index h
-          m.slots.uset result.index (slot.1, value) h
+      let vals :=
+        if h : result.index.toNat < m.vals.size then
+          m.vals.uset result.index value h
         else
-          m.slots
-      { m with slots := slots }
+          m.vals
+      { m with vals := vals }
     else if m.growthLeft == 0 then
       let m := prepareInsert m
       insertNewWithHash m key value scrambled
@@ -297,11 +306,14 @@ def erase [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
     let makeEmpty := n <= Group.width
     let ctrl := Ctrl.setWithClone m.ctrl n idx
       (if makeEmpty then Ctrl.empty else Ctrl.deleted)
-    let slots :=
-      if h : idx.toNat < m.slots.size then m.slots.uset idx default h else m.slots
+    let keys :=
+      if h : idx.toNat < m.keys.size then m.keys.uset idx default h else m.keys
+    let vals :=
+      if h : idx.toNat < m.vals.size then m.vals.uset idx default h else m.vals
     { m with
       ctrl := ctrl
-      slots := slots
+      keys := keys
+      vals := vals
       size := m.size - 1
       growthLeft := if makeEmpty then m.growthLeft + 1 else m.growthLeft }
 
@@ -317,18 +329,19 @@ def toList (m : @& RawTable α β) : List (α × β) := Id.run do
   for i in [:m.buckets.toNat] do
     if Ctrl.isFull (m.ctrl.get! i) then
       let idx := USize.ofNat i
-      if hs : idx.toNat < m.slots.size then
-        result := m.slots.uget idx hs :: result
+      if hk : idx.toNat < m.keys.size then
+        if hv : idx.toNat < m.vals.size then
+          result := (m.keys.uget idx hk, m.vals.uget idx hv) :: result
   return result
 
 /-- Executable check of the representation and probing invariants. -/
 def isValid [BEq α] [Hashable α] (m : @& RawTable α β) : Bool := Id.run do
   let n := m.buckets
   if n == 0 then
-    return m.size == 0 && m.ctrl.size == 0 && m.slots.size == 0
+    return m.size == 0 && m.ctrl.size == 0 && m.keys.size == 0 && m.vals.size == 0
   if n < 4 || (n &&& (n - 1)) != 0 then return false
   if m.ctrl.size != n.toNat + Group.width.toNat then return false
-  if m.slots.size != n.toNat then return false
+  if m.keys.size != n.toNat || m.vals.size != n.toNat then return false
   let mut full : USize := 0
   let mut occupied : USize := 0
   let mut hasEmpty := false
@@ -339,8 +352,8 @@ def isValid [BEq α] [Hashable α] (m : @& RawTable α β) : Bool := Id.run do
       full := full + 1
       occupied := occupied + 1
       let idx := USize.ofNat i
-      if hs : idx.toNat < m.slots.size then
-        let key := (m.slots.uget idx hs).1
+      if hk : idx.toNat < m.keys.size then
+        let key := m.keys.uget idx hk
         if Ctrl.h2 (Ctrl.scrambleHash (hash key)) != c || !(m.findIndex? key).isSome then
           valid := false
       else
