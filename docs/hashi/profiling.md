@@ -161,7 +161,7 @@ insertの既存キー探査と空き探査を統合した。通常ベンチの `
 growがreservedの1.96倍であることから、挿入中の次の大きな差は再ハッシュと確保。
 定常挿入自体の次の対象は`writeNew`である。
 
-## Std.HashMapとの比較
+## Std.HashMapとの比較（追加最適化前）
 
 同じキー列とサンプリング境界で両実装を計測した。gprof計装は関数境界の数によって
 影響が変わるため、次の秒数はボトルネックの帰属に使い、通常性能の比には使わない。
@@ -191,3 +191,30 @@ Hashiが遅い箇所は次のとおり。
 したがって、挿入の第一候補は`writeNew`の3配列更新とrecord再構築の削減、
 grow固有では再ハッシュ専用の直接配置経路である。hitの第一候補はindexの
 `Option`を経由せず、候補一致時にvalueを直接返すlookup経路である。
+
+## 比較結果に基づく最適化
+
+growでは再ハッシュ先がEMPTYだけの新規テーブルであることを利用した。
+`findAvailableWithHash?`の`Option USize`を経由せず、専用probeから
+`writeRehashed`へ直接渡す。古いcontrol byteをH2 tagとして再利用し、配置前の
+control再読込も省いた。
+
+| grow profile | sampled time | `findAvailableWithHash?` calls |
+| --- | ---: | ---: |
+| 変更前 | 1.20 s | 22,938,300 |
+| rehash専用経路 | 0.86 s | 900 |
+| EMPTY/DELETED走査もSSE2化 | 0.81 s | 900 |
+
+通常ベンチでは`insert_grow`の各runにおけるHashi/Std比の中央値が2.010倍から
+約1.50倍へ縮んだ。reserved経路にはこの変更は適用されない。
+
+lookupでは`findIndexWithHash? : Option USize`の後にvalue配列を読む二段階処理を
+避け、H2候補キーが一致した時点でvalueを返す`getWithHash?`を追加した。
+
+| lookup | 変更前 profile | 変更後 profile | 通常ベンチ Hashi / Std |
+| --- | ---: | ---: | ---: |
+| hit | 2.87 s | 2.11 s | 1.316× → 1.069× |
+| miss | 0.89 s | 0.89 s | 0.674× → 0.610× |
+
+hitの計装時間は26.5%減少した。missのgprofは0.01秒粒度では差が見えないが、
+通常releaseベンチでは追加のindex `Option`を除いた効果が確認できる。

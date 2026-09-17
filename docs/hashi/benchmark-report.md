@@ -2,7 +2,7 @@
 
 ## 条件
 
-- 実施日: 2026-09-17、コード: `896528c`
+- 実施日: 2026-09-17、コード: `584a171`
 - CPU: Intel Xeon、4 vCPU、x86_64
 - Lean 4.34.0、Clang 18.1.3、release ビルド、C Group 幅 8
 - `UInt64 → UInt64`、262,144 要素、lookup 100 反復
@@ -22,16 +22,14 @@ lake build hashi_bench
 
 | workload | Hashi | `Std.HashMap` | Hashi / Std |
 | --- | ---: | ---: | ---: |
-| `insert_grow` | 169.298 | 84.212 | 2.010× |
-| `insert_reserved` | 86.420 | 42.325 | 2.042× |
-| `find_hit` | 38.481 | 29.250 | 1.316× |
-| `find_miss` | **11.201** | 16.627 | **0.674×** |
+| `insert_grow` | 118.714 | 77.370 | 1.534× |
+| `insert_reserved` | 68.041 | 31.577 | 2.155× |
+| `find_hit` | 31.060 | 29.319 | 1.059× |
+| `find_miss` | **10.307** | 16.896 | **0.610×** |
 
-Hashi の `find_miss` は `Std.HashMap` より 32.6% 高速になった。insert と
-hit は引き続き Std が速い。
-
-`insert_grow` は `insert_reserved` の1.96倍で、再ハッシュと追加確保がほぼ同量の
-時間を占める。Stdでも対応する比は1.99倍。
+Hashi の `find_miss` は `Std.HashMap` より39.0%高速。hitの差は5.9%まで縮んだ。
+insertは引き続きStdが速い。insertはallocatorの影響による実行間変動が大きいため、
+絶対値に加えて各runのHashi/Std比も評価する。
 
 ## H2 ゼロマスク高速化
 
@@ -111,12 +109,31 @@ lookup差はコード配置と実行間のばらつきの範囲。最初の実�
 Hashiの破棄除外で見かけのinsert時間は25.3%減った。これは実装高速化ではなく、
 測定対象の修正である。
 
+## 比較profile後の最適化
+
+再ハッシュ先が新規テーブルであることを利用し、汎用の`Option`空き探索を経由せず
+EMPTY slotへ直接配置する専用経路を追加した。さらにEMPTY/DELETEDの8-byte走査を
+SSE2の`pmovmskb`へ変更した。
+
+- growのgprof sampled time: 1.20秒 → 0.86秒 → 0.81秒
+- 汎用`findAvailableWithHash?`: 22,938,300回 → 900回
+- 通常ベンチの対Std比（各run比の中央値）: 2.010× → 約1.50×
+
+lookupはindexを`Option USize`で返してからvalue配列を再度読む経路を廃止し、
+候補キー一致時にvalueを直接返すようにした。
+
+- hitのgprof sampled time: 2.87秒 → 2.11秒（-26.5%）
+- hitの通常ベンチ対Std比: 1.316× → 1.069×
+- missの通常ベンチ対Std比: 0.674× → 0.610×
+
+probeからEMPTY情報を`writeNew`へ運びcontrol byte再読込を省く案も測定したが、
+reserved profileは1.15秒から1.13秒の改善に留まり、growが悪化したため撤回した。
+
 ## 解釈と次の候補
 
-- miss の次の上位コストは候補処理、探査ループ、値取得。Group 幅 16 化も
-  引き続き検討対象
-- hit は `RawTable.get?` と候補キー取得が中心
-- grow insert は再ハッシュが支配的。reserved insert は`writeNew`が最大
+- hit/missは候補キー・valueの同時取得が中心。Group幅16化も検討対象
+- grow insertは専用再配置後も配列確保と`writeRehashed`が主要コスト
+- reserved insertは引き続き3配列を更新する`writeNew`が最大
 
 VM の周波数は固定しておらず、単一サイズ・整数キーのみの結果である。
 Abseil/hashbrown、erase、文字列、メモリ使用量はこの報告には含まない。
