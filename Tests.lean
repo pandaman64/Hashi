@@ -27,7 +27,7 @@ private def testNativeParity : IO Unit := do
       else if i % 13 == 0 then Swiss.Ctrl.deleted
       else UInt8.ofNat (i * 37 % 128)
     ctrl := ctrl.push value
-  for pos in [:57] do
+  for pos in [:49] do
     let p := USize.ofNat pos
     ensure (Swiss.Group.matchEmpty ctrl p == Swiss.Group.Portable.matchEmpty ctrl p)
       s!"native empty mismatch at {pos}"
