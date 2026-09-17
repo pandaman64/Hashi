@@ -1,6 +1,66 @@
 # Hashi
 
-Lean 4 のライブラリ雛形。SwissTable の調査と、Lean 4 実装の設計資料を `docs/` に置いている。
+Lean 4 向けの SwissTable 風ハッシュマップ実装。
+
+- 制御バイトとキー／値を分離した SoA レイアウト
+- 7-bit の H2 フィンガープリントと幅 8 のグループ走査
+- 三角探査、末尾クローン、7/8 負荷率
+- tombstone の再利用、容量拡張、再ハッシュ、`reserve`
+- C のグループ演算・制御配列操作と、同じ意味を持つ Lean 実装
+
+## 使用例
+
+```lean
+import Hashi
+
+def capitals : Hashi.HashMap String String :=
+  Hashi.HashMap.empty |>.insert "France" "Paris" |>.insert "Japan" "Tokyo"
+
+#eval capitals.get? "Japan" -- some "Tokyo"
+```
+
+公開 API は `empty`、`size`、`capacity`、`get?`、`contains`、`insert`、
+`erase`、`reserve`、`toList`、`fold`。更新操作はマップを所有して受け取り、
+新しいマップを返す。`let m := m.insert k v` のように線形に使うと配列が
+in-place 更新される。空スロットを初期化するため、更新操作にはキーと値の
+`Inhabited` インスタンスが必要。
+
+## ビルドと検証
+
+```sh
+lake build
+lake build hashi_tests
+lake exe hashi_tests
+```
+
+テストは Group の既知ベクトル、Lean と C の全窓同値検査、基本操作、
+全キーが同じハッシュになるケース、20,000 操作の `Std.HashMap` との差分検査、
+および内部不変条件の実行時検査を含む。
+
+同一ランタイムの簡易ベンチマーク:
+
+```sh
+# 引数は要素数と lookup の反復回数
+lake build hashi_bench
+.lake/build/bin/hashi_bench 65536 20
+```
+
+CSV で `insert_grow`、`insert_reserved`、`find_hit`、`find_miss` の ns/op を
+出力する。insertは完成マップの破棄をタイマー停止後へ分離している。
+コンパイル済み実行ファイルを使い、インタプリタの値は計測しない。
+
+ボトルネックを関数単位で調べる gprof 計装ビルド:
+
+```sh
+./scripts/profile.sh find-hit
+./scripts/profile.sh find-miss
+./scripts/profile.sh insert-grow
+```
+
+通常ビルドと分離した `.lake/build-profile` を使う。詳細は
+[プロファイリング手順](docs/hashi/profiling.md)を参照。
+
+測定結果は[比較ベンチマーク報告](docs/hashi/benchmark-report.md)にまとめている。
 
 ## SwissTable 調査
 
@@ -10,11 +70,11 @@ Lean 4 のライブラリ雛形。SwissTable の調査と、Lean 4 実装の設�
 - [hashbrown `RawTable` 実装](docs/swisstable/hashbrown.md)
 - [実装差の対照](docs/swisstable/comparison.md)
 
-## Lean 4 実装設計
-
-コードはまだない。設計のみ。
+## Lean 4 実装資料
 
 - [概要](docs/hashi/README.md)
 - [レイアウトとホットパス](docs/hashi/lean-implementation.md)
 - [不足操作と C ネイティブ計画](docs/hashi/native-ops.md)
 - [ベンチマーク計画](docs/hashi/benchmarking.md)
+- [比較ベンチマーク報告](docs/hashi/benchmark-report.md)
+- [プロファイリング手順](docs/hashi/profiling.md)
