@@ -55,8 +55,8 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
         none
     go 0
 
-private def matchingValue? [BEq α] (m : @& RawTable α β) (pos : USize)
-    (bits : UInt32) (key : α) : Option β :=
+private def matchingValueFrom? [BEq α] (m : @& RawTable α β) (pos : USize)
+    (bits : UInt32) (key : α) (firstOffset : Nat) : Option β :=
   if bits == 0 then none
   else
     let rec go (offset : Nat) : Option β :=
@@ -75,7 +75,7 @@ private def matchingValue? [BEq α] (m : @& RawTable α β) (pos : USize)
           go (offset + 1)
       else
         none
-    go 0
+    go firstOffset
 
 private structure InsertSearch where
   index : USize
@@ -176,14 +176,30 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
         match homeValue with
         | some value => some value
         | none =>
-          let remaining := if hasHomeCandidate then bits &&& 0xfe else bits
-          match matchingValue? m pos remaining key with
+          let remaining := bits &&& 0xfe
+          let hasNextCandidate := (remaining &&& 2) != 0
+          let nextValue :=
+            if hasNextCandidate then
+              let idx := (pos + 1) &&& m.bucketMask
+              if hk : idx.toNat < m.keys.size then
+                if m.keys.uget idx hk == key then
+                  if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
+                else
+                  none
+              else
+                none
+            else
+              none
+          match nextValue with
           | some value => some value
           | none =>
-            if (group &&& 0xff00) != 0 then none
-            else
-              let stride := stride + Group.width
-              probe fuel ((pos + stride) &&& m.bucketMask) stride
+            match matchingValueFrom? m pos (remaining &&& 0xfc) key 2 with
+            | some value => some value
+            | none =>
+              if (group &&& 0xff00) != 0 then none
+              else
+                let stride := stride + Group.width
+                probe fuel ((pos + stride) &&& m.bucketMask) stride
     probe groups (Ctrl.h1 scrambled m.bucketMask) 0
 
 private def findAvailableWithHash? (m : @& RawTable α β)
