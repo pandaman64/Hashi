@@ -235,3 +235,8 @@ control maskのbit 0が立つ場合はhome bucketをprobe内で直接読むよ�
 同時に再計測したStdのsampled timeは2.88秒。gprof下の絶対比ではなく通常release
 ベンチを性能判定に使っているが、再帰呼び出しが75.2%減ったことから、狙った
 boxed counter経路を回避できたことも確認できる。
+
+offset 1も同様に直接確認し、fallbackのboxed `Nat` loopをoffset 2から開始した。
+再帰呼び出しはさらに25,993,600回から10,818,800回へ58.4%減少。通常ベンチの
+hit中央値は26.617 ns/opから24.935 ns/opへ6.3%改善し、Stdの27.726 ns/opを
+10.1%上回った。変更後のsampled timeはHashi 2.20秒、Std 2.61秒。

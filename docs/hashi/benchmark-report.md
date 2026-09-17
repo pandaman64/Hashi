@@ -2,7 +2,7 @@
 
 ## 条件
 
-- 実施日: 2026-09-17、コード: `4e8499e`
+- 実施日: 2026-09-17、コード: `7c00620`
 - CPU: Intel Xeon、4 vCPU、x86_64
 - Lean 4.34.0、Clang 18.1.3、release ビルド、C Group 幅 8
 - `UInt64 → UInt64`、262,144 要素、lookup 100 反復
@@ -22,12 +22,12 @@ lake build hashi_bench
 
 | workload | Hashi | `Std.HashMap` | Hashi / Std |
 | --- | ---: | ---: | ---: |
-| `insert_grow` | 108.492 | 78.845 | 1.376× |
-| `insert_reserved` | 68.794 | 35.318 | 1.948× |
-| `find_hit` | **26.617** | 28.228 | **0.943×** |
-| `find_miss` | **10.289** | 16.437 | **0.626×** |
+| `insert_grow` | 108.184 | 71.040 | 1.523× |
+| `insert_reserved` | 56.810 | 41.288 | 1.376× |
+| `find_hit` | **24.935** | 27.726 | **0.899×** |
+| `find_miss` | **10.381** | 16.267 | **0.638×** |
 
-Hashiの`find_hit`は`Std.HashMap`より5.7%、`find_miss`は37.4%高速。
+Hashiの`find_hit`は`Std.HashMap`より10.1%、`find_miss`は36.2%高速。
 insertは引き続きStdが速い。insertはallocatorの影響による実行間変動が大きいため、
 絶対値に加えて各runのHashi/Std比も評価する。
 
@@ -145,6 +145,16 @@ control bitが立っている場合はhome bucketを直接確認し、残りだ�
 - hit gprof sampled time: 2.11秒 → 2.06秒、同条件のStdは2.88秒
 - hit通常ベンチ: 31.060 ns/op → 26.617 ns/op（-14.3%）
 - hit対Std比: 1.059× → 0.943×
+
+次にoffset 1も直接確認し、残りのloopはoffset 2から開始するようにした。
+
+- `matchingValue?`再帰呼び出し: 25,993,600回 → 10,818,800回（-58.4%）
+- 最初の直接value化前からの削減: 104,886,800回 → 10,818,800回（-89.7%）
+- hit通常ベンチ: 26.617 ns/op → 24.935 ns/op（-6.3%）
+- hit対Std比: 0.943× → 0.899×
+
+gprof sampled timeは2.06秒から2.20秒へ増えたが、関数境界を変える`-pg`計装の
+影響と0.01秒サンプルの変動がある。採否は5回の非計装releaseベンチで判断した。
 
 ## 解釈と次の候補
 
