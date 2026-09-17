@@ -15,7 +15,7 @@ namespace Portable
 def matchLoop (ctrl : @& ByteArray) (pos : USize)
     (pred : UInt8 → Bool) : UInt32 :=
   let rec go (offset : Nat) (bits : UInt32) : UInt32 :=
-    if _h : offset < 8 then
+    if _h : offset < width.toNat then
       let c := getCtrl ctrl (pos + USize.ofNat offset)
       let bit := (1 : UInt32) <<< UInt32.ofNat offset
       go (offset + 1) (if pred c then bits ||| bit else bits)
@@ -33,10 +33,12 @@ def matchEmptyOrDeleted (ctrl : @& ByteArray) (pos : USize) : UInt32 :=
   matchLoop ctrl pos fun c => !Ctrl.isFull c
 
 def matchH2AndEmpty (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt32 :=
-  matchH2 ctrl pos tag ||| (matchEmpty ctrl pos <<< 8)
+  matchH2 ctrl pos tag ||| (matchEmpty ctrl pos <<< 16)
 
-def matchForInsert (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt32 :=
-  matchH2AndEmpty ctrl pos tag ||| (matchEmptyOrDeleted ctrl pos <<< 16)
+def matchForInsert (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt64 :=
+  UInt64.ofNat (matchH2 ctrl pos tag).toNat |||
+    (UInt64.ofNat (matchEmpty ctrl pos).toNat <<< 16) |||
+    (UInt64.ofNat (matchEmptyOrDeleted ctrl pos).toNat <<< 32)
 
 def anyEmpty (ctrl : @& ByteArray) (pos : USize) : Bool :=
   matchEmpty ctrl pos != 0
@@ -66,7 +68,7 @@ def matchEmptyOrDeleted (ctrl : @& ByteArray) (pos : USize) : UInt32 :=
   Portable.matchEmptyOrDeleted ctrl pos
 
 /--
-Return H2 matches in bits 0–7 and EMPTY matches in bits 8–15.
+Return H2 matches in bits 0–15 and EMPTY matches in bits 16–31.
 The native implementation computes both while loading the group only once.
 -/
 @[extern "hashi_group_match_h2_and_empty", inline]
@@ -74,11 +76,11 @@ def matchH2AndEmpty (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt32 :
   Portable.matchH2AndEmpty ctrl pos tag
 
 /--
-Return H2 matches in bits 0–7, EMPTY matches in bits 8–15, and
-EMPTY/DELETED matches in bits 16–23.
+Return H2 matches in bits 0–15, EMPTY matches in bits 16–31, and
+EMPTY/DELETED matches in bits 32–47.
 -/
 @[extern "hashi_group_match_for_insert", inline]
-def matchForInsert (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt32 :=
+def matchForInsert (ctrl : @& ByteArray) (pos : USize) (tag : UInt8) : UInt64 :=
   Portable.matchForInsert ctrl pos tag
 
 @[extern "hashi_group_any_empty", inline]

@@ -41,7 +41,7 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
   if bits == 0 then none
   else
     let rec go (offset : Nat) : Option USize :=
-      if _h : offset < 8 then
+      if _h : offset < Group.width.toNat then
         let bit := (1 : UInt32) <<< UInt32.ofNat offset
         if (bits &&& bit) != 0 then
           let idx := (pos + USize.ofNat offset) &&& m.bucketMask
@@ -60,7 +60,7 @@ private def matchingValueFrom? [BEq α] (m : @& RawTable α β) (pos : USize)
   if bits == 0 then none
   else
     let rec go (offset : Nat) : Option β :=
-      if _h : offset < 8 then
+      if _h : offset < Group.width.toNat then
         let bit := (1 : UInt32) <<< UInt32.ofNat offset
         if (bits &&& bit) != 0 then
           let idx := (pos + USize.ofNat offset) &&& m.bucketMask
@@ -105,16 +105,16 @@ private def findForInsertWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => firstVacant.map fun index => ⟨index, false⟩
       | fuel + 1 =>
         let group := Group.matchForInsert m.ctrl pos tag
-        let candidates := group &&& 0xff
+        let candidates := (group &&& 0xffff).toUInt32
         match matchingOffset? m pos candidates key with
         | some index => some ⟨index, true⟩
         | none =>
-          let available := (group >>> 16) &&& 0xff
+          let available := (group >>> 32).toUInt32
           let firstVacant :=
             match firstVacant with
             | some index => some index
             | none => firstIndexInMask m pos available
-          if (group &&& 0xff00) != 0 then
+          if (group &&& 0xffff0000) != 0 then
             firstVacant.map fun index => ⟨index, false⟩
           else
             let stride := stride + Group.width
@@ -133,11 +133,11 @@ def findIndexWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => none
       | fuel + 1 =>
         let group := Group.matchH2AndEmpty m.ctrl pos tag
-        let bits := group &&& 0xff
+        let bits := group &&& 0xffff
         match matchingOffset? m pos bits key with
         | some idx => some idx
         | none =>
-          if (group &&& 0xff00) != 0 then none
+          if (group &&& 0xffff0000) != 0 then none
           else
             let stride := stride + Group.width
             probe fuel ((pos + stride) &&& m.bucketMask) stride
@@ -159,7 +159,7 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => none
       | fuel + 1 =>
         let group := Group.matchH2AndEmpty m.ctrl pos tag
-        let bits := group &&& 0xff
+        let bits := group &&& 0xffff
         let hasHomeCandidate := (bits &&& 1) != 0
         let homeValue :=
           if hasHomeCandidate then
@@ -176,7 +176,7 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
         match homeValue with
         | some value => some value
         | none =>
-          let remaining := bits &&& 0xfe
+          let remaining := bits &&& 0xfffe
           let hasNextCandidate := (remaining &&& 2) != 0
           let nextValue :=
             if hasNextCandidate then
@@ -193,10 +193,10 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
           match nextValue with
           | some value => some value
           | none =>
-            match matchingValueFrom? m pos (remaining &&& 0xfc) key 2 with
+            match matchingValueFrom? m pos (remaining &&& 0xfffc) key 2 with
             | some value => some value
             | none =>
-              if (group &&& 0xff00) != 0 then none
+              if (group &&& 0xffff0000) != 0 then none
               else
                 let stride := stride + Group.width
                 probe fuel ((pos + stride) &&& m.bucketMask) stride

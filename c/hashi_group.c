@@ -12,7 +12,7 @@
 extern void moncontrol(int);
 #endif
 
-#define HASHI_WIDTH 8
+#define HASHI_WIDTH 16
 #define HASHI_EMPTY UINT8_C(0xff)
 
 LEAN_EXPORT lean_obj_res hashi_profile_control(uint8_t enabled) {
@@ -43,13 +43,13 @@ LEAN_EXPORT uint32_t hashi_group_match_h2_and_empty(
     b_lean_obj_arg ctrl, size_t pos, uint8_t tag) {
     const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
 #if defined(__SSE2__)
-    const __m128i group = _mm_loadl_epi64((const __m128i *)(const void *)p);
+    const __m128i group = _mm_loadu_si128((const __m128i *)(const void *)p);
     const __m128i tags = _mm_set1_epi8((char)tag);
     const __m128i empty = _mm_set1_epi8((char)HASHI_EMPTY);
     const uint32_t matches =
-        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, tags)) & UINT32_C(0xff);
+        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, tags)) & UINT32_C(0xffff);
     const uint32_t empties =
-        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, empty)) & UINT32_C(0xff);
+        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, empty)) & UINT32_C(0xffff);
     return matches | (empties << HASHI_WIDTH);
 #else
     uint32_t matches = 0;
@@ -62,20 +62,21 @@ LEAN_EXPORT uint32_t hashi_group_match_h2_and_empty(
 #endif
 }
 
-LEAN_EXPORT uint32_t hashi_group_match_for_insert(
+LEAN_EXPORT uint64_t hashi_group_match_for_insert(
     b_lean_obj_arg ctrl, size_t pos, uint8_t tag) {
     const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
 #if defined(__SSE2__)
-    const __m128i group = _mm_loadl_epi64((const __m128i *)(const void *)p);
+    const __m128i group = _mm_loadu_si128((const __m128i *)(const void *)p);
     const __m128i tags = _mm_set1_epi8((char)tag);
     const __m128i empty = _mm_set1_epi8((char)HASHI_EMPTY);
     const uint32_t matches =
-        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, tags)) & UINT32_C(0xff);
+        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, tags)) & UINT32_C(0xffff);
     const uint32_t empties =
-        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, empty)) & UINT32_C(0xff);
+        (uint32_t)_mm_movemask_epi8(_mm_cmpeq_epi8(group, empty)) & UINT32_C(0xffff);
     const uint32_t available =
-        (uint32_t)_mm_movemask_epi8(group) & UINT32_C(0xff);
-    return matches | (empties << HASHI_WIDTH) | (available << (2 * HASHI_WIDTH));
+        (uint32_t)_mm_movemask_epi8(group) & UINT32_C(0xffff);
+    return (uint64_t)matches | ((uint64_t)empties << HASHI_WIDTH) |
+        ((uint64_t)available << (2 * HASHI_WIDTH));
 #else
     uint32_t matches = 0;
     uint32_t empties = 0;
@@ -85,7 +86,8 @@ LEAN_EXPORT uint32_t hashi_group_match_for_insert(
         if (p[i] == HASHI_EMPTY) empties |= UINT32_C(1) << i;
         if ((p[i] & UINT8_C(0x80)) != 0) available |= UINT32_C(1) << i;
     }
-    return matches | (empties << HASHI_WIDTH) | (available << (2 * HASHI_WIDTH));
+    return (uint64_t)matches | ((uint64_t)empties << HASHI_WIDTH) |
+        ((uint64_t)available << (2 * HASHI_WIDTH));
 #endif
 }
 
@@ -102,8 +104,8 @@ LEAN_EXPORT uint32_t hashi_group_match_empty_or_deleted(
     b_lean_obj_arg ctrl, size_t pos) {
     const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
 #if defined(__SSE2__)
-    const __m128i group = _mm_loadl_epi64((const __m128i *)(const void *)p);
-    return (uint32_t)_mm_movemask_epi8(group) & UINT32_C(0xff);
+    const __m128i group = _mm_loadu_si128((const __m128i *)(const void *)p);
+    return (uint32_t)_mm_movemask_epi8(group) & UINT32_C(0xffff);
 #else
     uint32_t bits = 0;
     for (uint32_t i = 0; i < HASHI_WIDTH; ++i) {
@@ -136,11 +138,10 @@ LEAN_EXPORT lean_obj_res hashi_ctrl_set(
     lean_obj_arg ctrl, size_t buckets, size_t index, uint8_t value) {
     if (buckets == 0 || index >= buckets) return ctrl;
     ctrl = lean_byte_array_uset(ctrl, index, value);
-    if (index < HASHI_WIDTH) {
-        ctrl = lean_byte_array_uset(ctrl, buckets + index, value);
-    }
-    if (buckets < HASHI_WIDTH) {
-        ctrl = lean_byte_array_uset(ctrl, buckets + buckets + index, value);
+    for (size_t clone = buckets + index;
+         clone < buckets + HASHI_WIDTH;
+         clone += buckets) {
+        ctrl = lean_byte_array_uset(ctrl, clone, value);
     }
     return ctrl;
 }

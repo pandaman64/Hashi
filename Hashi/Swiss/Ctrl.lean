@@ -3,7 +3,7 @@ namespace Hashi.Swiss
 namespace Ctrl
 
 /-- Number of control bytes examined by one portable group operation. -/
-def width : USize := 8
+def width : USize := 16
 
 /-- Marks a bucket that has never held an element. -/
 def empty : UInt8 := 0xff
@@ -26,7 +26,7 @@ def deleted : UInt8 := 0x80
   (h >>> 57).toUInt8
 
 @[inline] def maxLoad (buckets : USize) : USize :=
-  if buckets <= 8 then
+  if buckets <= width then
     if buckets == 0 then 0 else buckets - 1
   else
     buckets - buckets / 8
@@ -52,12 +52,15 @@ def setWithClone (ctrl : ByteArray) (buckets i : USize) (value : UInt8) : ByteAr
   if buckets == 0 then ctrl
   else
     let ctrl := setAt ctrl i value
-    let ctrl :=
-      if i < width then setAt ctrl (buckets + i) value else ctrl
-    if buckets < width && i < buckets then
-      setAt ctrl (buckets + buckets + i) value
-    else
-      ctrl
+    let rec setClones (ctrl : ByteArray) (clone : USize) (fuel : Nat) : ByteArray :=
+      match fuel with
+      | 0 => ctrl
+      | fuel + 1 =>
+        if clone < buckets + width then
+          setClones (setAt ctrl clone value) (clone + buckets) fuel
+        else
+          ctrl
+    setClones ctrl (buckets + i) width.toNat
 
 end Ctrl
 
