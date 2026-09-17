@@ -9,6 +9,7 @@
 
 #if defined(HASHI_GPROF)
 #include <sys/gmon.h>
+extern void moncontrol(int);
 #endif
 
 #define HASHI_WIDTH 8
