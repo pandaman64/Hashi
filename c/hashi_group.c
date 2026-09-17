@@ -101,11 +101,16 @@ LEAN_EXPORT uint32_t hashi_group_match_empty(b_lean_obj_arg ctrl, size_t pos) {
 LEAN_EXPORT uint32_t hashi_group_match_empty_or_deleted(
     b_lean_obj_arg ctrl, size_t pos) {
     const uint8_t *p = hashi_ctrl_ptr(ctrl, pos);
+#if defined(__SSE2__)
+    const __m128i group = _mm_loadl_epi64((const __m128i *)(const void *)p);
+    return (uint32_t)_mm_movemask_epi8(group) & UINT32_C(0xff);
+#else
     uint32_t bits = 0;
     for (uint32_t i = 0; i < HASHI_WIDTH; ++i) {
         if ((p[i] & UINT8_C(0x80)) != 0) bits |= UINT32_C(1) << i;
     }
     return bits;
+#endif
 }
 
 LEAN_EXPORT uint8_t hashi_group_any_empty(b_lean_obj_arg ctrl, size_t pos) {
