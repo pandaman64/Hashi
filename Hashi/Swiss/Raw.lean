@@ -41,7 +41,7 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
   if bits == 0 then none
   else
     let rec go (offset : Nat) : Option USize :=
-      if _h : offset < Group.width.toNat then
+      if _h : offset < 8 then
         let bit := (1 : UInt32) <<< UInt32.ofNat offset
         if (bits &&& bit) != 0 then
           let idx := (pos + USize.ofNat offset) &&& m.bucketMask
@@ -55,26 +55,27 @@ private def matchingOffset? [BEq α] (m : @& RawTable α β) (pos : USize)
         none
     go 0
 
-private def matchingValueMask? [BEq α] (m : @& RawTable α β) (pos : USize)
-    (bits : UInt32) (key : α) : Option β :=
+private def matchingValueFrom? [BEq α] (m : @& RawTable α β) (pos : USize)
+    (bits : UInt32) (key : α) (firstOffset : Nat) : Option β :=
   if bits == 0 then none
   else
-    let rec go (fuel : Nat) (remaining : UInt32) : Option β :=
-      match fuel with
-      | 0 => none
-      | fuel + 1 =>
-        if remaining == 0 then none
-        else
-          let offset := Group.ctz remaining
-          let idx := (pos + USize.ofNat offset.toNat) &&& m.bucketMask
+    let rec go (offset : Nat) : Option β :=
+      if _h : offset < 8 then
+        let bit := (1 : UInt32) <<< UInt32.ofNat offset
+        if (bits &&& bit) != 0 then
+          let idx := (pos + USize.ofNat offset) &&& m.bucketMask
           if hk : idx.toNat < m.keys.size then
             if m.keys.uget idx hk == key then
               if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
             else
-              go fuel (remaining &&& (remaining - 1))
+              go (offset + 1)
           else
-            go fuel (remaining &&& (remaining - 1))
-    go Group.width.toNat bits
+            go (offset + 1)
+        else
+          go (offset + 1)
+      else
+        none
+    go firstOffset
 
 private structure InsertSearch where
   index : USize
@@ -104,16 +105,16 @@ private def findForInsertWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => firstVacant.map fun index => ⟨index, false⟩
       | fuel + 1 =>
         let group := Group.matchForInsert m.ctrl pos tag
-        let candidates := (group &&& 0xffff).toUInt32
+        let candidates := group &&& 0xff
         match matchingOffset? m pos candidates key with
         | some index => some ⟨index, true⟩
         | none =>
-          let available := (group >>> 32).toUInt32
+          let available := (group >>> 16) &&& 0xff
           let firstVacant :=
             match firstVacant with
             | some index => some index
             | none => firstIndexInMask m pos available
-          if (group &&& 0xffff0000) != 0 then
+          if (group &&& 0xff00) != 0 then
             firstVacant.map fun index => ⟨index, false⟩
           else
             let stride := stride + Group.width
@@ -132,11 +133,11 @@ def findIndexWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => none
       | fuel + 1 =>
         let group := Group.matchH2AndEmpty m.ctrl pos tag
-        let bits := group &&& 0xffff
+        let bits := group &&& 0xff
         match matchingOffset? m pos bits key with
         | some idx => some idx
         | none =>
-          if (group &&& 0xffff0000) != 0 then none
+          if (group &&& 0xff00) != 0 then none
           else
             let stride := stride + Group.width
             probe fuel ((pos + stride) &&& m.bucketMask) stride
@@ -158,7 +159,7 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | 0 => none
       | fuel + 1 =>
         let group := Group.matchH2AndEmpty m.ctrl pos tag
-        let bits := group &&& 0xffff
+        let bits := group &&& 0xff
         let hasHomeCandidate := (bits &&& 1) != 0
         let homeValue :=
           if hasHomeCandidate then
@@ -175,7 +176,7 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
         match homeValue with
         | some value => some value
         | none =>
-          let remaining := bits &&& 0xfffe
+          let remaining := bits &&& 0xfe
           let hasNextCandidate := (remaining &&& 2) != 0
           let nextValue :=
             if hasNextCandidate then
@@ -192,10 +193,10 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
           match nextValue with
           | some value => some value
           | none =>
-            match matchingValueMask? m pos (remaining &&& 0xfffc) key with
+            match matchingValueFrom? m pos (remaining &&& 0xfc) key 2 with
             | some value => some value
             | none =>
-              if (group &&& 0xffff0000) != 0 then none
+              if (group &&& 0xff00) != 0 then none
               else
                 let stride := stride + Group.width
                 probe fuel ((pos + stride) &&& m.bucketMask) stride

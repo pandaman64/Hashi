@@ -7,17 +7,16 @@ private def ensure (condition : Bool) (message : String) : IO Unit :=
   unless condition do throw (IO.userError message)
 
 private def testGroups : IO Unit := do
-  let ctrl := ByteArray.mk #[0x12, 0xff, 0x80, 0x12, 0x7f, 0xff, 0x00, 0x12,
-    0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
+  let ctrl := ByteArray.mk #[0x12, 0xff, 0x80, 0x12, 0x7f, 0xff, 0x00, 0x12]
   ensure (Swiss.Group.matchH2 ctrl 0 0x12 == 0x89) "matchH2 mask is incorrect"
   ensure (Swiss.Group.matchEmpty ctrl 0 == 0x22) "matchEmpty mask is incorrect"
-  ensure (Swiss.Group.matchH2AndEmpty ctrl 0 0x12 == 0x00220089)
+  ensure (Swiss.Group.matchH2AndEmpty ctrl 0 0x12 == 0x2289)
     "combined H2/EMPTY mask is incorrect"
-  ensure (Swiss.Group.matchForInsert ctrl 0 0x12 == 0x0000002600220089)
+  ensure (Swiss.Group.matchForInsert ctrl 0 0x12 == 0x262289)
     "insert mask is incorrect"
   ensure (Swiss.Group.matchEmptyOrDeleted ctrl 0 == 0x26)
     "matchEmptyOrDeleted mask is incorrect"
-  ensure (Swiss.Group.ctz 0x8000 == 15 && Swiss.Group.ctz 0 == 32) "ctz is incorrect"
+  ensure (Swiss.Group.ctz 0x80 == 7 && Swiss.Group.ctz 0 == 32) "ctz is incorrect"
 
 private def testNativeParity : IO Unit := do
   let mut ctrl := ByteArray.emptyWithCapacity 64
@@ -27,7 +26,7 @@ private def testNativeParity : IO Unit := do
       else if i % 13 == 0 then Swiss.Ctrl.deleted
       else UInt8.ofNat (i * 37 % 128)
     ctrl := ctrl.push value
-  for pos in [:49] do
+  for pos in [:57] do
     let p := USize.ofNat pos
     ensure (Swiss.Group.matchEmpty ctrl p == Swiss.Group.Portable.matchEmpty ctrl p)
       s!"native empty mismatch at {pos}"
