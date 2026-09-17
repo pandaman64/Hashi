@@ -218,3 +218,20 @@ lookupでは`findIndexWithHash? : Option USize`の後にvalue配列を読む二�
 
 hitの計装時間は26.5%減少した。missのgprofは0.01秒粒度では差が見えないが、
 通常releaseベンチでは追加のindex `Option`を除いた効果が確認できる。
+
+## home bucket hitのfast path
+
+直接value経路の生成Cを確認すると、`matchingValue?`は候補の大半がoffset 0でも
+boxed `Nat`のloop counter、範囲比較、shift、`USize`変換を実行していた。
+control maskのbit 0が立つ場合はhome bucketをprobe内で直接読むようにした。
+
+| 指標 | 変更前 | 変更後 |
+| --- | ---: | ---: |
+| `matchingValue?`再帰呼び出し | 104,886,800 | 25,993,600 |
+| Hashi hit sampled time | 2.11 s | 2.06 s |
+| Hashi hit ns/op | 31.060 | 26.617 |
+| Hashi / Std hit | 1.059× | 0.943× |
+
+同時に再計測したStdのsampled timeは2.88秒。gprof下の絶対比ではなく通常release
+ベンチを性能判定に使っているが、再帰呼び出しが75.2%減ったことから、狙った
+boxed counter経路を回避できたことも確認できる。

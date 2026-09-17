@@ -2,7 +2,7 @@
 
 ## 条件
 
-- 実施日: 2026-09-17、コード: `1453e78`
+- 実施日: 2026-09-17、コード: `4e8499e`
 - CPU: Intel Xeon、4 vCPU、x86_64
 - Lean 4.34.0、Clang 18.1.3、release ビルド、C Group 幅 8
 - `UInt64 → UInt64`、262,144 要素、lookup 100 反復
@@ -22,12 +22,12 @@ lake build hashi_bench
 
 | workload | Hashi | `Std.HashMap` | Hashi / Std |
 | --- | ---: | ---: | ---: |
-| `insert_grow` | 118.714 | 77.370 | 1.534× |
-| `insert_reserved` | 68.041 | 31.577 | 2.155× |
-| `find_hit` | 31.060 | 29.319 | 1.059× |
-| `find_miss` | **10.307** | 16.896 | **0.610×** |
+| `insert_grow` | 108.492 | 78.845 | 1.376× |
+| `insert_reserved` | 68.794 | 35.318 | 1.948× |
+| `find_hit` | **26.617** | 28.228 | **0.943×** |
+| `find_miss` | **10.289** | 16.437 | **0.626×** |
 
-Hashi の `find_miss` は `Std.HashMap` より39.0%高速。hitの差は5.9%まで縮んだ。
+Hashiの`find_hit`は`Std.HashMap`より5.7%、`find_miss`は37.4%高速。
 insertは引き続きStdが速い。insertはallocatorの影響による実行間変動が大きいため、
 絶対値に加えて各runのHashi/Std比も評価する。
 
@@ -134,6 +134,17 @@ key/valueの二配列を`Array (α × β)`へ統合する案も試した。`writ
 reserved profile全体は1.15秒から1.21秒へ悪化した。通常ベンチ中央値も
 growが118.714 nsから179.291 ns、hitが31.060 nsから45.689 nsへ悪化した。
 再ハッシュの各移動でもpairを再確保するため、この配置は撤回した。
+
+## hit候補offset 0のfast path
+
+直接valueを返す変更後も、候補確認はoffset 0から始めるboxed `Nat`ループだった。
+生成Cでは各hitで`Nat`比較、`UInt32` shift、`USize`変換を行っていた。最初の
+control bitが立っている場合はhome bucketを直接確認し、残りだけ従来ループへ渡す。
+
+- `matchingValue?`再帰呼び出し: 104,886,800回 → 25,993,600回（-75.2%）
+- hit gprof sampled time: 2.11秒 → 2.06秒、同条件のStdは2.88秒
+- hit通常ベンチ: 31.060 ns/op → 26.617 ns/op（-14.3%）
+- hit対Std比: 1.059× → 0.943×
 
 ## 解釈と次の候補
 
