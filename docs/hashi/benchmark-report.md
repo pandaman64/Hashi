@@ -156,6 +156,23 @@ control bitが立っている場合はhome bucketを直接確認し、残りだ�
 gprof sampled timeは2.06秒から2.20秒へ増えたが、関数境界を変える`-pg`計装の
 影響と0.01秒サンプルの変動がある。採否は5回の非計装releaseベンチで判断した。
 
+## SSE2 Group幅16の実験
+
+Abseil/hashbrownのx86実装に合わせ、clone、三角probe stride、mask ABIを含めて
+論理Group幅を8から16へ変更した。insertの3 maskは48 bitになるため`UInt64`化した。
+
+| workload | 幅8 ns/op | 幅16 ns/op | 変化 |
+| --- | ---: | ---: | ---: |
+| `insert_grow` | 108.184 | 110.427 | +2.1% |
+| `insert_reserved` | 56.810 | 60.054 | +5.7% |
+| `find_hit` | 24.935 | 25.008 | +0.3% |
+| `find_miss` | 10.381 | 12.251 | **+18.0%** |
+
+幅16ではmissの7-bit H2偽候補が増えたため、残り候補を全offset走査せず`ctz`で
+set bitだけ辿る案も試した。missは11.431 nsまで戻ったが幅8より10.1%遅く、
+hitも24.859 nsで実質横ばいだった。今回のloadではほぼ最初のGroupで停止するため、
+幅を倍にしてもprobe回数が減らず、候補とmask処理だけが増える。幅16は撤回した。
+
 ## 解釈と次の候補
 
 - hit/missは候補キー・valueの同時取得が中心。Group幅16化も検討対象
