@@ -14,6 +14,7 @@ Linux で `gprof`（通常は `binutils` に含まれる）を用意し、リポ
 ./scripts/profile.sh find-hit
 ./scripts/profile.sh find-miss 262144 400
 ./scripts/profile.sh insert-grow 262144 50
+./scripts/profile.sh insert-reserved 262144 50
 ```
 
 引数は workload、要素数、反復数。結果は
@@ -73,7 +74,8 @@ self-time サンプルであり、絶対性能や通常ビルドの ns/op とし
   H2 候補処理が中心
 - `find-miss`: `matchingOffset?` 37.5%、`hashi_group_match_h2` 14.4%、
   `hashi_group_any_empty` 12.0%
-- `insert-grow`: RC 解放系が約 45%、`writeNew` 15.0%、再ハッシュ走査 6.5%。
+- `insert-grow`（旧harness、完成マップ破棄込み）: RC 解放系が約 45%、
+  `writeNew` 15.0%、再ハッシュ走査 6.5%。
   5,242,880 回の利用者 insert に対して `writeNew` は 14,417,840 回呼ばれ、
   成長時の再挿入コストが明確
 
@@ -140,6 +142,17 @@ insertの既存キー探査と空き探査を統合した。通常ベンチの `
 58,109,300回から40,552,500回へ30.2%減少した。残る空き探査の大半は
 再ハッシュ時の再挿入である。
 
-gprofではRC解放系が引き続き約46%、`writeNew` が15%を占める。次は
-`insert_reserved` を追加して再ハッシュを分離し、要素移動時のRC処理を
-調査する必要がある。
+## 挿入harness分離後
+
+完成マップをタイマー停止後まで保持し、gprofでは`moncontrol`とopaqueなIO境界で
+キー生成・reserve・マップ破棄中のサンプリングを止めた。
+
+- `insert-grow`: 169.298 ns/op。`writeNew` 20.9%、再ハッシュ走査10.9%、
+  RC cold pathと再帰deleterの合計は14.5%
+- `insert-reserved`: 86.420 ns/op。`writeNew` 45.5%、RC cold pathは6.8%で、
+  再帰deleterはサンプル上位から消えた
+
+旧harnessの226.534 ns/opから破棄を外すと169.298 ns/opとなり、見かけ上25.3%
+減った。この差は高速化ではなく、完成したキー・値配列の破棄コストである。
+growがreservedの1.96倍であることから、挿入中の次の大きな差は再ハッシュと確保。
+定常挿入自体の次の対象は`writeNew`である。

@@ -45,7 +45,8 @@ lake build hashi_bench
 .lake/build/bin/hashi_bench 65536 20
 ```
 
-CSV で `insert_grow`、`find_hit`、`find_miss` の ns/op を出力する。
+CSV で `insert_grow`、`insert_reserved`、`find_hit`、`find_miss` の ns/op を
+出力する。insertは完成マップの破棄をタイマー停止後へ分離している。
 コンパイル済み実行ファイルを使い、インタプリタの値は計測しない。
 
 ボトルネックを関数単位で調べる gprof 計装ビルド:
