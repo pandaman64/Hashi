@@ -32,26 +32,31 @@ private def lookup (map : HashMap UInt64 UInt64) (keys : Array UInt64)
       sink := sink ^^^ (map.get? key).getD 0
   return sink
 
--- Keep profiling workloads as stable, separately visible native symbols.
-private opaque profileLookup (map : HashMap UInt64 UInt64) (keys : Array UInt64)
-    (repetitions : Nat) : UInt64 :=
-  lookup map keys repetitions
+-- IO-returning opaque boundaries prevent pure work from being moved across
+-- the `moncontrol` calls by strict evaluation or compiler optimization.
+private opaque profileLookupIO (map : HashMap UInt64 UInt64) (keys : Array UInt64)
+    (repetitions : Nat) : IO UInt64 :=
+  pure (lookup map keys repetitions)
 
-private opaque profileFill (initial : HashMap UInt64 UInt64)
-    (keys : Array UInt64) : HashMap UInt64 UInt64 :=
-  fillMap initial keys
+private opaque profileBuildIO (keys : Array UInt64) : IO (HashMap UInt64 UInt64) :=
+  pure (buildMap keys)
 
-private opaque profileReserve (capacity : Nat) : HashMap UInt64 UInt64 :=
-  HashMap.empty.reserve capacity
+private opaque profileFillIO (initial : HashMap UInt64 UInt64)
+    (keys : Array UInt64) : IO (HashMap UInt64 UInt64) :=
+  pure (fillMap initial keys)
+
+private opaque profileReserveIO (capacity : Nat) : IO (HashMap UInt64 UInt64) :=
+  pure (HashMap.empty.reserve capacity)
 
 private def profileInsertRepeated (keys : Array UInt64) (repetitions : Nat)
     (reserved : Bool) : IO UInt64 := do
   let mut sink := 0
   for _ in [:repetitions] do
-    let initial : HashMap UInt64 UInt64 :=
-      if reserved then profileReserve keys.size else {}
+    let initial ←
+      if reserved then profileReserveIO keys.size
+      else pure ({} : HashMap UInt64 UInt64)
     setProfiling 1
-    let map := profileFill initial keys
+    let map ← profileFillIO initial keys
     setProfiling 0
     sink := sink ^^^ map.size.toUInt64
   return sink
@@ -73,16 +78,16 @@ def main (args : List String) : IO Unit := do
   let hitKeys := makeKeys n 0
   let sink ← match workload with
     | "find-hit" =>
-      let map := buildMap hitKeys
+      let map ← profileBuildIO hitKeys
       setProfiling 1
-      let sink := profileLookup map hitKeys repetitions
+      let sink ← profileLookupIO map hitKeys repetitions
       setProfiling 0
       pure sink
     | "find-miss" =>
-      let map := buildMap hitKeys
+      let map ← profileBuildIO hitKeys
       let missKeys := makeKeys n 0xd1b54a32d192ed03
       setProfiling 1
-      let sink := profileLookup map missKeys repetitions
+      let sink ← profileLookupIO map missKeys repetitions
       setProfiling 0
       pure sink
     | "insert-grow" =>
