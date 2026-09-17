@@ -160,13 +160,30 @@ private def getWithHash? [BEq α] (m : @& RawTable α β) (key : α)
       | fuel + 1 =>
         let group := Group.matchH2AndEmpty m.ctrl pos tag
         let bits := group &&& 0xff
-        match matchingValue? m pos bits key with
+        let hasHomeCandidate := (bits &&& 1) != 0
+        let homeValue :=
+          if hasHomeCandidate then
+            let idx := pos &&& m.bucketMask
+            if hk : idx.toNat < m.keys.size then
+              if m.keys.uget idx hk == key then
+                if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
+              else
+                none
+            else
+              none
+          else
+            none
+        match homeValue with
         | some value => some value
         | none =>
-          if (group &&& 0xff00) != 0 then none
-          else
-            let stride := stride + Group.width
-            probe fuel ((pos + stride) &&& m.bucketMask) stride
+          let remaining := if hasHomeCandidate then bits &&& 0xfe else bits
+          match matchingValue? m pos remaining key with
+          | some value => some value
+          | none =>
+            if (group &&& 0xff00) != 0 then none
+            else
+              let stride := stride + Group.width
+              probe fuel ((pos + stride) &&& m.bucketMask) stride
     probe groups (Ctrl.h1 scrambled m.bucketMask) 0
 
 private def findAvailableWithHash? (m : @& RawTable α β)
