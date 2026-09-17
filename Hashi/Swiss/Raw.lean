@@ -160,6 +160,40 @@ private def writeNew (m : RawTable α β) (idx : USize) (tag : UInt8)
     size := m.size + 1
     growthLeft := if previous == Ctrl.empty then m.growthLeft - 1 else m.growthLeft }
 
+private def writeRehashed (m : RawTable α β) (idx : USize) (tag : UInt8)
+    (key : α) (value : β) : RawTable α β :=
+  let keys :=
+    if h : idx.toNat < m.keys.size then m.keys.uset idx key h else m.keys
+  let vals :=
+    if h : idx.toNat < m.vals.size then m.vals.uset idx value h else m.vals
+  let n := m.buckets
+  { m with
+    ctrl := Ctrl.setWithClone m.ctrl n idx tag
+    keys := keys
+    vals := vals
+    size := m.size + 1
+    growthLeft := m.growthLeft - 1 }
+
+private def insertRehashedWithHash (m : RawTable α β) (key : α) (value : β)
+    (scrambled : UInt64) (tag : UInt8) : RawTable α β :=
+  let n := m.buckets
+  if n == 0 then m
+  else
+    let groups := if n < Group.width then 1 else n.toNat / Group.width.toNat
+    let rec probe (m : RawTable α β) (fuel : Nat) (pos stride : USize) : RawTable α β :=
+      match fuel with
+      | 0 => m
+      | fuel + 1 =>
+        let bits := Group.matchEmptyOrDeleted m.ctrl pos
+        if bits != 0 then
+          let offset := USize.ofNat (Group.ctz bits).toNat
+          let idx := (pos + offset) &&& m.bucketMask
+          writeRehashed m idx tag key value
+        else
+          let stride := stride + Group.width
+          probe m fuel ((pos + stride) &&& m.bucketMask) stride
+    probe m groups (Ctrl.h1 scrambled m.bucketMask) 0
+
 private def insertNewWithHash (m : RawTable α β) (key : α) (value : β)
     (scrambled : UInt64) : RawTable α β :=
   match findAvailableWithHash? m scrambled with
@@ -171,13 +205,15 @@ def rehash [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
   let old := m
   let mut result := withBuckets (α := α) (β := β) newBuckets
   for i in [:old.buckets.toNat] do
-    if Ctrl.isFull (old.ctrl.get! i) then
+    let control := old.ctrl.get! i
+    if Ctrl.isFull control then
       let idx := USize.ofNat i
       if hk : idx.toNat < old.keys.size then
         if hv : idx.toNat < old.vals.size then
           let key := old.keys.uget idx hk
           let value := old.vals.uget idx hv
-          result := insertNewWithHash result key value (Ctrl.scrambleHash (hash key))
+          let scrambled := Ctrl.scrambleHash (hash key)
+          result := insertRehashedWithHash result key value scrambled control
   return result
 
 private def prepareInsert [BEq α] [Hashable α] [Inhabited α] [Inhabited β]
