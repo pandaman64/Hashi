@@ -59,19 +59,22 @@ private def matchingValueMask? [BEq α] (m : @& RawTable α β) (pos : USize)
     (bits : UInt32) (key : α) : Option β :=
   if bits == 0 then none
   else
-    let rec go (remaining : UInt32) : Option β :=
-      if remaining == 0 then none
-      else
-        let offset := Group.ctz remaining
-        let idx := (pos + USize.ofNat offset.toNat) &&& m.bucketMask
-        if hk : idx.toNat < m.keys.size then
-          if m.keys.uget idx hk == key then
-            if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
-          else
-            go (remaining &&& (remaining - 1))
+    let rec go (fuel : Nat) (remaining : UInt32) : Option β :=
+      match fuel with
+      | 0 => none
+      | fuel + 1 =>
+        if remaining == 0 then none
         else
-          go (remaining &&& (remaining - 1))
-    go bits
+          let offset := Group.ctz remaining
+          let idx := (pos + USize.ofNat offset.toNat) &&& m.bucketMask
+          if hk : idx.toNat < m.keys.size then
+            if m.keys.uget idx hk == key then
+              if hv : idx.toNat < m.vals.size then some (m.vals.uget idx hv) else none
+            else
+              go fuel (remaining &&& (remaining - 1))
+          else
+            go fuel (remaining &&& (remaining - 1))
+    go Group.width.toNat bits
 
 private structure InsertSearch where
   index : USize
